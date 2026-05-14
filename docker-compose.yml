@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+
+  # ── Elasticsearch cluster ────────────────────────────────────────────────────
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=distributed-search-cluster
+      - discovery.seed_hosts=es02,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es01_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - search-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=distributed-search-cluster
+      - discovery.seed_hosts=es01,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es02_data:/usr/share/elasticsearch/data
+    networks:
+      - search-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  es03:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: es03
+    environment:
+      - node.name=es03
+      - cluster.name=distributed-search-cluster
+      - discovery.seed_hosts=es01,es02
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es03_data:/usr/share/elasticsearch/data
+    networks:
+      - search-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - search-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Re-ranking service ────────────────────────────────────────────────
+  reranker:
+    build:
+      context: ./reranking-service
+      dockerfile: Dockerfile
+    container_name: reranker
+    environment:
+      - WORKERS=2
+      - PORT=8001
+    ports:
+      - "8001:8001"
+    networks:
+      - search-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    restart: on-failure
+
+  # ── Spring Boot Search API ────────────────────────────────────────────────────
+  search-api:
+    build:
+      context: ./search-api
+      dockerfile: Dockerfile
+    container_name: search-api
+    env_file: .env
+    ports:
+      - "8080:8080"
+    networks:
+      - search-net
+    depends_on:
+      es01:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      reranker:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  es01_data:
+  es02_data:
+  es03_data:
+  redis_data:
+
+networks:
+  search-net:
+    driver: bridge
