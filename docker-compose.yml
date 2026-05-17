@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
 
-  # ── Elasticsearch cluster ────────────────────────────────────────────────────
+  # ── Elasticsearch cluster (2-node) ───────────────────────────────────────────
   es01:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: es01
     environment:
       - node.name=es01
       - cluster.name=distributed-search-cluster
-      - discovery.seed_hosts=es02,es03
-      - cluster.initial_master_nodes=es01,es02,es03
+      - discovery.seed_hosts=es02
+      - cluster.initial_master_nodes=es01,es02
       - bootstrap.memory_lock=true
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
@@ -29,6 +27,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
+      start_period: 120s
 
   es02:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -36,8 +35,8 @@ services:
     environment:
       - node.name=es02
       - cluster.name=distributed-search-cluster
-      - discovery.seed_hosts=es01,es03
-      - cluster.initial_master_nodes=es01,es02,es03
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01,es02
       - bootstrap.memory_lock=true
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
@@ -54,31 +53,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-
-  es03:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: es03
-    environment:
-      - node.name=es03
-      - cluster.name=distributed-search-cluster
-      - discovery.seed_hosts=es01,es02
-      - cluster.initial_master_nodes=es01,es02,es03
-      - bootstrap.memory_lock=true
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - es03_data:/usr/share/elasticsearch/data
-    networks:
-      - search-net
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
+      start_period: 120s
 
   # ── Redis ────────────────────────────────────────────────────────────────────
   redis:
@@ -111,10 +86,11 @@ services:
     networks:
       - search-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 120s
     restart: on-failure
 
   # ── Spring Boot Search API ────────────────────────────────────────────────────
@@ -137,10 +113,23 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  # ── Frontend (nginx SPA + reverse proxy) ─────────────────────────────────────
+  frontend:
+    image: nginx:alpine
+    container_name: frontend
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3000:80"
+    networks:
+      - search-net
+    depends_on:
+      - search-api
+
 volumes:
   es01_data:
   es02_data:
-  es03_data:
   redis_data:
 
 networks:

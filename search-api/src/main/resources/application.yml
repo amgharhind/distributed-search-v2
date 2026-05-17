@@ -1,10 +1,16 @@
 spring:
   application:
     name: distributed-search-api
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
 
 server:
   port: ${SERVER_PORT:8080}

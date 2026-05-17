@@ -1,5 +1,7 @@
 # Distributed Search System — v2
 
+![CI](https://github.com/amgharhind/distributed-search-v2/actions/workflows/build.yml/badge.svg)
+
 A production-grade distributed search platform that combines **BM25 lexical retrieval** with **semantic re-ranking** via a dedicated ML microservice. One `docker compose up` starts the full stack.
 
 ---
