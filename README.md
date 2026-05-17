@@ -12,31 +12,29 @@ A production-grade distributed search platform combining **BM25 lexical retrieva
 graph TD
     Browser["Browser :3000"]
 
-    subgraph frontend["Nginx — Frontend SPA"]
-        direction TB
-        SPA["index.html (Vanilla JS)"]
-        NX["Rate limiting\n30 req/min search\n120 req/min API"]
+    subgraph frontend["Nginx — Frontend SPA :3000"]
+        NX["Reverse proxy · Rate limiting\n30 req/min search · 120 req/min API"]
     end
 
     subgraph api["Spring Boot Search API :8080"]
-        direction TB
         SC["SearchController"]
+        AC["AnalyticsController"]
         DC["DocumentController"]
         CC["CacheController"]
-        SS["SearchService"]
+        SS["SearchService\n(BM25 · ES highlight)"]
         RS["RerankingService\n(Resilience4j CB)"]
+        AS["AnalyticsService"]
         DS["DocumentService"]
         CS["CacheService"]
     end
 
     subgraph es_cluster["Elasticsearch 8.13 Cluster"]
-        ES1["es01 (primary)"]
+        ES1["es01 :9200 (primary)"]
         ES2["es02 (replica)"]
     end
 
     subgraph reranker["Re-ranking Microservice :8001"]
-        FA["FastAPI + Gunicorn"]
-        ML["all-MiniLM-L6-v2\n5% BM25 + 95% cosine"]
+        ML["FastAPI + Gunicorn\nall-MiniLM-L6-v2\n5% BM25 + 95% cosine"]
     end
 
     subgraph observability["Observability"]
@@ -45,15 +43,20 @@ graph TD
         KB["Kibana :5601"]
     end
 
-    Redis[("Redis :6379\nSCAN-safe cache")]
+    Redis[("Redis :6379\nSearch cache · Analytics")]
 
     Browser --> frontend
-    frontend --> api
+    frontend --> SC
+    frontend --> AC
+    frontend --> DC
+    frontend --> CC
     SC --> SS
+    SC --> RS
+    AC --> AS
     SS --> es_cluster
-    SS --> RS
     RS --> reranker
     SS --> CS
+    AS --> Redis
     CS --> Redis
     DC --> DS
     DS --> es_cluster
@@ -80,7 +83,9 @@ graph TD
 | API docs | None | **Swagger UI** at `/swagger-ui.html` |
 | Metrics | None | **Prometheus + Actuator + Grafana** dashboard |
 | Observability | None | **Kibana** for index inspection and log analytics |
-| Frontend | None | **Dark SPA** with search, cache manager, document CRUD, live stats, side-by-side re-ranking comparison |
+| Search result display | Raw text | **ES highlight snippets** — matched terms highlighted in violet |
+| Analytics | None | **Analytics tab** — top searched queries and most-clicked documents (Redis sorted sets) |
+| Frontend | None | **Dark SPA** with search, comparison, analytics, cache manager, document CRUD, live stats |
 | Document ingestion | Manual JSON only | **File upload** (PDF, DOCX, TXT, CSV, JSON, MD…) with text extraction |
 | Deployment | 4 separate manual steps | **Single `docker compose up`** (9 services) |
 
@@ -361,6 +366,8 @@ Badge at the top of this file reflects the latest build status.
 | API docs | Springdoc OpenAPI (Swagger UI) |
 | Metrics | Micrometer · Prometheus · Grafana |
 | Log analytics | Kibana 8.13 (structured JSON logs) |
+| Search highlighting | Elasticsearch highlight API (160-char fragments, `<em>` markers) |
+| Click analytics | Redis sorted sets (`ZINCRBY`) + SCAN-based aggregation |
 | Frontend | Vanilla JS SPA · nginx reverse proxy |
 | Rate limiting | nginx `limit_req_zone` (30/min search, 120/min API) |
 | Containerisation | Docker · Docker Compose (9 services) |
@@ -391,8 +398,10 @@ distributed-search-v2/
 │   ├── pom.xml
 │   └── src/main/java/com/search/distributed/
 │       ├── config/                 # ES, Redis, WebClient beans
-│       ├── controller/             # SearchController, CacheController, DocumentController
-│       ├── service/                # SearchService, RerankingService, CacheService,
+│       ├── controller/             # SearchController, AnalyticsController,
+│       │                           # CacheController, DocumentController
+│       ├── service/                # SearchService (BM25 + highlight), RerankingService,
+│       │                           # AnalyticsService, CacheService,
 │       │                           # DocumentService, InteractionService
 │       ├── model/                  # Document, SearchResult, RerankRequest, DocumentRequest
 │       └── exception/              # GlobalExceptionHandler

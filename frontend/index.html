@@ -498,6 +498,11 @@ details[open] .adv-arrow { transform: rotate(90deg); }
   margin-bottom: 3px;
 }
 .mini-ft { padding: 1px 5px; font-size: .6rem; }
+.mini-snippet {
+  font-size: .7rem; color: var(--t2); line-height: 1.5; margin-top: 4px;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.mini-snippet em { color: var(--violet); font-style: normal; font-weight: 600; background: rgba(139,92,246,.15); border-radius: 2px; padding: 0 2px; }
 
 .rank-delta {
   flex-shrink: 0; font-size: .68rem; font-weight: 700;
@@ -1122,6 +1127,9 @@ function miniCard(doc, rank, otherRank, isReranked, maxBm25) {
   const title = h(doc.title || doc.filename || `Document ${doc.id}`);
   const ft    = (doc.fileType || '').toLowerCase();
   const clr   = FT_COLORS[ft] || '#6b7280';
+  const snippet = doc.snippet
+    ? h(doc.snippet).replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>')
+    : h((doc.content || '').slice(0, 120) + ((doc.content || '').length > 120 ? '…' : ''));
 
   // Positive delta = this doc ranks better here than in the other column
   const delta = isReranked ? (otherRank - rank) : (rank - otherRank);
@@ -1144,6 +1152,7 @@ function miniCard(doc, rank, otherRank, isReranked, maxBm25) {
       <div class="mini-card-body">
         <div class="mini-card-title">${title}</div>
         ${ft ? `<span class="ft-badge mini-ft" style="background:${clr}22;color:${clr};border:1px solid ${clr}44">${ft}</span>` : ''}
+        ${snippet ? `<div class="mini-snippet">${snippet}</div>` : ''}
       </div>
       ${deltaHtml}
       <div class="mini-score-bar">
