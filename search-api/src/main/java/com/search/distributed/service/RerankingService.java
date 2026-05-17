@@ -46,10 +46,14 @@ public class RerankingService {
         List<Map<String, Object>> ranked = (List<Map<String, Object>>) response.get("ranked_results");
         if (ranked == null) return documents;
 
+        // Index originals by id so we can merge scores back without losing any fields
+        Map<String, Document> originalById = documents.stream()
+                .collect(Collectors.toMap(Document::getId, d -> d));
+
         return ranked.stream().map(r -> {
-            Document doc = new Document();
-            doc.setId((String) r.get("id"));
-            doc.setContent((String) r.get("content"));
+            String id = (String) r.get("id");
+            Document doc = originalById.getOrDefault(id, new Document());
+            doc.setId(id);
             doc.setBm25Score(((Number) r.get("bm25_score")).floatValue());
             doc.setSemanticScore(((Number) r.get("semantic_score")).floatValue());
             doc.setFinalScore(((Number) r.get("final_score")).doubleValue());

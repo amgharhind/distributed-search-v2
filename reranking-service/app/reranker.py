@@ -40,8 +40,8 @@ class Reranker:
         results: List[RankedDocument] = []
         for doc, semantic_score, bm25_score in zip(documents, similarities, bm25_scores):
             norm_bm25 = bm25_score / max_bm25
-            # Hybrid score: 40% BM25 (lexical) + 60% semantic
-            final_score = 0.4 * norm_bm25 + 0.6 * semantic_score
+            # Hybrid score: 20% BM25 (lexical) + 80% semantic — semantic dominates to show re-ranking value
+            final_score = 0.2 * norm_bm25 + 0.8 * semantic_score
             results.append(
                 RankedDocument(
                     id=doc.id,
