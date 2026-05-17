@@ -21,7 +21,7 @@ elasticsearch:
 reranking:
   service:
     url: ${RERANKING_SERVICE_URL:http://localhost:8001}
-  timeout-seconds: 5
+  timeout-seconds: 15
 
 resilience4j:
   circuitbreaker:
@@ -32,9 +32,9 @@ resilience4j:
         minimumNumberOfCalls: 5
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 10s
-        failureRateThreshold: 50
-        slowCallDurationThreshold: 5s
+        waitDurationInOpenState: 15s
+        failureRateThreshold: 60
+        slowCallDurationThreshold: 12s
         slowCallRateThreshold: 80
 
 management:

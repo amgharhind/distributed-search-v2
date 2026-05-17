@@ -37,9 +37,11 @@ public class DocumentService {
     private static final String INDEX = "documents";
 
     private final ElasticsearchClient esClient;
+    private final CacheService cacheService;
 
-    public DocumentService(ElasticsearchClient esClient) {
+    public DocumentService(ElasticsearchClient esClient, CacheService cacheService) {
         this.esClient = esClient;
+        this.cacheService = cacheService;
     }
 
     @PostConstruct
@@ -73,6 +75,7 @@ public class DocumentService {
                     .id(id)
                     .document(doc));
             log.debug("Indexed document id={} result={}", id, response.result());
+            cacheService.evictAll();
             return doc;
         } catch (IOException e) {
             throw new SearchException("Failed to index document", e);
@@ -99,6 +102,7 @@ public class DocumentService {
                         .filter(item -> item.error() != null)
                         .forEach(item -> log.warn("Bulk index error for id={}: {}", item.id(), item.error().reason()));
             }
+            cacheService.evictAll();
             return docs;
         } catch (IOException e) {
             throw new SearchException("Bulk index failed", e);
@@ -155,6 +159,7 @@ public class DocumentService {
                     .id(id)
                     .doc(updated),
                     Document.class);
+            cacheService.evictAll();
             return updated;
         } catch (IOException e) {
             throw new SearchException("Failed to update document id=" + id, e);
@@ -164,7 +169,9 @@ public class DocumentService {
     public boolean delete(String id) {
         try {
             DeleteResponse response = esClient.delete(d -> d.index(INDEX).id(id));
-            return response.result() == Result.Deleted;
+            boolean deleted = response.result() == Result.Deleted;
+            if (deleted) cacheService.evictAll();
+            return deleted;
         } catch (IOException e) {
             throw new SearchException("Failed to delete document id=" + id, e);
         }

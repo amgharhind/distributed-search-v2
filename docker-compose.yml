@@ -115,6 +115,12 @@ services:
       reranker:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   # ── Frontend (nginx SPA + reverse proxy) ─────────────────────────────────────
   frontend:
@@ -129,6 +135,23 @@ services:
       - search-net
     depends_on:
       - search-api
+    restart: unless-stopped
+
+  # ── Kibana (Elasticsearch UI) ────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es01:9200
+      - XPACK_SECURITY_ENABLED=false
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=a7a6311933d3503b89bc2dbc36572c33a6c10925682e591bffcab6911c06786d
+    ports:
+      - "5601:5601"
+    networks:
+      - search-net
+    depends_on:
+      es01:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Prometheus (metrics scraping) ─────────────────────────────────────────────

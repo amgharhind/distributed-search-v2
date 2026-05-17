@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+  <!-- JSON structured logs — parsed by Kibana / Grafana Loki -->
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeCallerData>false</includeCallerData>
+      <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
+      <fieldNames>
+        <timestamp>timestamp</timestamp>
+        <message>message</message>
+        <logger>logger</logger>
+        <level>level</level>
+        <thread>thread</thread>
+      </fieldNames>
+    </encoder>
+  </appender>
+
+  <!-- Reduce noise from ES client and Spring internals -->
+  <logger name="org.elasticsearch"             level="WARN"/>
+  <logger name="org.apache.http"               level="WARN"/>
+  <logger name="org.springframework.web"       level="WARN"/>
+  <logger name="org.springframework.data"      level="WARN"/>
+  <logger name="io.lettuce"                    level="WARN"/>
+
+  <!-- Our application code at DEBUG -->
+  <logger name="com.search.distributed"        level="DEBUG"/>
+
+  <root level="INFO">
+    <appender-ref ref="JSON"/>
+  </root>
+
+</configuration>
