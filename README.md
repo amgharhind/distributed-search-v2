@@ -2,7 +2,66 @@
 
 ![CI](https://github.com/amgharhind/distributed-search-v2/actions/workflows/build.yml/badge.svg)
 
-A production-grade distributed search platform combining **BM25 lexical retrieval** with **neural semantic re-ranking**, a **Redis cache layer**, a **dark-themed SPA frontend**, and full **Docker Compose** orchestration. One command starts the entire stack.
+A production-grade distributed search platform combining **BM25 lexical retrieval** with **neural semantic re-ranking**, a **Redis cache layer**, a **dark-themed SPA frontend**, and full **Docker Compose** orchestration. One command starts the entire 9-service stack.
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    Browser["Browser :3000"]
+
+    subgraph frontend["Nginx — Frontend SPA"]
+        direction TB
+        SPA["index.html (Vanilla JS)"]
+        NX["Rate limiting\n30 req/min search\n120 req/min API"]
+    end
+
+    subgraph api["Spring Boot Search API :8080"]
+        direction TB
+        SC["SearchController"]
+        DC["DocumentController"]
+        CC["CacheController"]
+        SS["SearchService"]
+        RS["RerankingService\n(Resilience4j CB)"]
+        DS["DocumentService"]
+        CS["CacheService"]
+    end
+
+    subgraph es_cluster["Elasticsearch 8.13 Cluster"]
+        ES1["es01 (primary)"]
+        ES2["es02 (replica)"]
+    end
+
+    subgraph reranker["Re-ranking Microservice :8001"]
+        FA["FastAPI + Gunicorn"]
+        ML["all-MiniLM-L6-v2\n5% BM25 + 95% cosine"]
+    end
+
+    subgraph observability["Observability"]
+        PR["Prometheus :9090"]
+        GR["Grafana :3001"]
+        KB["Kibana :5601"]
+    end
+
+    Redis[("Redis :6379\nSCAN-safe cache")]
+
+    Browser --> frontend
+    frontend --> api
+    SC --> SS
+    SS --> es_cluster
+    SS --> RS
+    RS --> reranker
+    SS --> CS
+    CS --> Redis
+    DC --> DS
+    DS --> es_cluster
+    DS --> CS
+    api --> PR
+    PR --> GR
+    es_cluster --> KB
+```
 
 ---
 
@@ -13,70 +72,17 @@ A production-grade distributed search platform combining **BM25 lexical retrieva
 | Elasticsearch | 7.12 (EOL) · `RestHighLevelClient` (deprecated) | **8.13** · new `ElasticsearchClient` |
 | Re-ranking service | Flask (single-threaded) · re-fetches documents from ES | **FastAPI + Gunicorn** · receives docs directly |
 | ML model | `distilbert-base-nli-stsb-mean-tokens` (deprecated) | **`all-MiniLM-L6-v2`** — 5× faster, higher MTEB score |
-| Scoring | BM25 only | **Hybrid: 20 % BM25 + 80 % cosine similarity** |
+| Scoring | BM25 only | **Hybrid: 5% BM25 + 95% cosine similarity** |
 | HTTP client | `RestTemplate` (deprecated) | **`WebClient`** (non-blocking) |
 | Re-ranker resilience | Hard crash on failure | **Resilience4j circuit breaker** → graceful BM25 fallback |
 | Redis safety | `KEYS *` (blocks Redis) | **`SCAN` cursor** (non-blocking) |
 | Service URL | Hardcoded `localhost:5000` | **`RERANKING_SERVICE_URL` env-var** |
 | API docs | None | **Swagger UI** at `/swagger-ui.html` |
 | Metrics | None | **Prometheus + Actuator + Grafana** dashboard |
+| Observability | None | **Kibana** for index inspection and log analytics |
 | Frontend | None | **Dark SPA** with search, cache manager, document CRUD, live stats, side-by-side re-ranking comparison |
 | Document ingestion | Manual JSON only | **File upload** (PDF, DOCX, TXT, CSV, JSON, MD…) with text extraction |
-| Deployment | 4 separate manual steps | **Single `docker compose up`** |
-
----
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────┐
-│                    Browser                        │
-└─────────────────────┬────────────────────────────┘
-                      │ HTTP :3000
-                      ▼
-┌──────────────────────────────────────────────────┐
-│              Nginx  (frontend SPA)                │
-│  /api/       → proxy → search-api:8080            │
-│  /actuator/  → proxy → search-api:8080            │
-│  /reranker/  → proxy → reranker:8001              │
-│  /es/        → proxy → es01:9200                  │
-└─────────────────────┬────────────────────────────┘
-                      │
-                      ▼
-┌──────────────────────────────────────────────────┐
-│         Spring Boot Search API  :8080             │
-│                                                   │
-│  SearchController ──► SearchService               │
-│  DocumentController ─► DocumentService            │
-│  CacheController  ──► CacheService                │
-│         │                   │  BM25 query         │
-│         │                   ▼                     │
-│         │        ┌─────────────────┐              │
-│         │        │  ES 8.x Cluster │  2 nodes     │
-│         │        │   es01  es02    │              │
-│         │        └────────┬────────┘              │
-│         │                 │ top-50 docs            │
-│         │                 ▼                        │
-│         │        RerankingService                  │
-│         │        (Resilience4j CB)                 │
-│         │                 │                        │
-│         │                 ▼                        │
-│         │        ┌─────────────────┐              │
-│         │        │  FastAPI :8001   │             │
-│         │        │  all-MiniLM-L6  │             │
-│         │        │  20% BM25       │             │
-│         │        │  80% cosine     │             │
-│         │        └────────┬────────┘              │
-│         ▼                 ▼                        │
-│   CacheService ◄── final ranked results            │
-│   (Redis SCAN)                                    │
-└──────────────────────────────────────────────────┘
-          │                       │
-   ┌──────┴──────┐        ┌───────┴──────┐
-   │    Redis    │        │  Prometheus  │
-   │   :6379     │        │  /actuator   │
-   └─────────────┘        └─────────────┘
-```
+| Deployment | 4 separate manual steps | **Single `docker compose up`** (9 services) |
 
 ---
 
@@ -85,6 +91,7 @@ A production-grade distributed search platform combining **BM25 lexical retrieva
 ```bash
 git clone https://github.com/amgharhind/distributed-search-v2.git
 cd distributed-search-v2
+cp .env.example .env          # review defaults — no changes needed for local dev
 docker compose up -d --build
 ```
 
@@ -94,6 +101,7 @@ All services start in dependency order (health-checked). Elasticsearch takes ~2 
 
 ```bash
 python scripts/load-sample-data.py
+python scripts/fix-demo-doc.py     # ensures the BM25-weakness demo doc is correct
 ```
 
 Loads 15 documents designed to demonstrate re-ranking, caching, and distributed search value.
@@ -102,17 +110,71 @@ Loads 15 documents designed to demonstrate re-ranking, caching, and distributed 
 
 ## Service URLs
 
-| Service | URL |
+| Service | URL | Credentials |
+|---|---|---|
+| **Frontend SPA** | http://localhost:3000 | — |
+| Search API | http://localhost:8080 | — |
+| Swagger UI | http://localhost:8080/swagger-ui.html | — |
+| Health check | http://localhost:8080/actuator/health | — |
+| Prometheus metrics | http://localhost:8080/actuator/prometheus | — |
+| Re-ranking service docs | http://localhost:8001/docs | — |
+| Elasticsearch | http://localhost:9200 | — |
+| **Kibana** | http://localhost:5601 | — |
+| **Prometheus** | http://localhost:9090 | — |
+| **Grafana dashboards** | http://localhost:3001 | admin / admin |
+
+---
+
+## Performance
+
+All numbers measured on the 15-document demo corpus (Apple M2, Docker Desktop):
+
+| Scenario | Latency |
 |---|---|
-| **Frontend SPA** | http://localhost:3000 |
-| Search API | http://localhost:8080 |
-| Swagger UI | http://localhost:8080/swagger-ui.html |
-| Prometheus metrics | http://localhost:8080/actuator/prometheus |
-| Health check | http://localhost:8080/actuator/health |
-| Re-ranking service docs | http://localhost:8001/docs |
-| Elasticsearch | http://localhost:9200 |
-| **Prometheus** | http://localhost:9090 |
-| **Grafana dashboards** | http://localhost:3001 (admin / admin) |
+| BM25 search (uncached) | ~5 ms |
+| BM25 + re-ranking (uncached, first call) | ~80–120 ms |
+| Any search (Redis cache hit) | ~1 ms |
+| File upload + text extraction (PDF, 1 MB) | ~200 ms |
+
+Cache hits return results in **~1 ms** regardless of corpus size — look for the `⚡ Cached` badge in the frontend. Run the same query twice to see it.
+
+---
+
+## How the hybrid scoring works
+
+```
+final_score = 0.05 × norm_bm25 + 0.95 × cosine_similarity
+```
+
+1. **BM25** (Elasticsearch) retrieves the top-50 candidates using the inverted index — fast (~5 ms)
+2. **all-MiniLM-L6-v2** encodes the query and all 50 candidates into 384-dimensional vectors
+3. **Cosine similarity** measures semantic closeness between query and document embeddings
+4. **Hybrid score** blends both signals — 95% semantic weight means the re-ranker visibly reorders results for vocabulary-mismatch queries
+5. Results are **sorted by final score** and cached in Redis for subsequent identical queries
+
+If the re-ranking service is unavailable, the **Resilience4j circuit breaker** opens immediately and returns BM25 order — the search endpoint never fails.
+
+### Try it live — the BM25 weakness demo
+
+1. Open http://localhost:3000 → **Search** tab
+2. Type `fast document retrieval` and click **Compare BM25 vs Re-ranked**
+3. With re-ranking **OFF** (BM25 only): the Ferrari cars document ranks **#1** — it contains the exact keywords "fast", "document", "retrieval" but is semantically about cars
+4. With re-ranking **ON**: the Ferrari doc drops to **last place** — the 95% semantic weight correctly identifies it as off-topic
+5. This is BM25's classic **vocabulary mismatch problem**, solved by neural re-ranking
+
+---
+
+## Demo queries
+
+Run these in the **Search** tab of the frontend:
+
+| Query | What it shows |
+|---|---|
+| `fast document retrieval` | Toggle Re-rank — Ferrari cars doc drops from #1 with BM25 to last with re-ranking |
+| `how does semantic search work` | BM25 misses conceptual matches; re-ranker surfaces them |
+| `cache latency performance` | Run twice — second response shows ⚡ Cached badge and ~1 ms |
+| `circuit breaker microservices` | Finds resilience docs via semantic similarity, not exact keywords |
+| `distributed search production` | Broad query — shows full corpus coverage and score bars |
 
 ---
 
@@ -121,7 +183,7 @@ Loads 15 documents designed to demonstrate re-ranking, caching, and distributed 
 ### Start / stop
 
 ```bash
-# Start all services in background
+# Start all 9 services in background
 docker compose up -d --build
 
 # Stop all services (keeps data)
@@ -141,17 +203,17 @@ docker compose up -d --build search-api
 docker compose up -d --build reranker
 
 # Frontend changed (index.html, nginx.conf)
-# No rebuild needed — frontend is volume-mounted, changes are instant
+# No rebuild needed — changes are served immediately.
 # Just reload the browser.
 ```
 
 ### Inspect logs
 
 ```bash
-docker logs search-api --tail 50 -f
+docker logs search-api --tail 50 -f   # structured JSON logs
 docker logs reranker   --tail 50 -f
 docker logs es01       --tail 50 -f
-docker logs redis      --tail 50 -f
+docker logs kibana     --tail 50 -f
 ```
 
 ### Check container health
@@ -220,35 +282,55 @@ curl -X POST http://localhost:8080/api/v2/documents/upload \
 
 ---
 
-## How the hybrid scoring works
+## Troubleshooting
 
+### Elasticsearch stays unhealthy on first boot
+
+ES takes up to 2 minutes to initialize on first start. Check progress:
+
+```bash
+docker logs es01 --tail 30 -f
+# Wait until you see: "started" and "elected-as-master"
 ```
-final_score = 0.05 × norm_bm25 + 0.95 × cosine_similarity
+
+If it's been more than 5 minutes:
+
+```bash
+docker compose down -v   # wipes volumes
+docker compose up -d     # fresh start
 ```
 
-1. **BM25** (Elasticsearch) retrieves the top-50 candidates using the inverted index — fast (~5 ms)
-2. **all-MiniLM-L6-v2** encodes the query and all 50 candidates into 384-dimensional vectors
-3. **Cosine similarity** measures semantic closeness between query and document embeddings
-4. **Hybrid score** blends both signals — BM25 provides recall for exact-match queries, cosine dominates relevance ranking
-5. Results are **sorted by final score** and cached in Redis for subsequent identical queries
+### Re-ranking service returns BM25 results (circuit breaker open)
 
-The 95 % semantic weight means the re-ranker visibly reorders results for vocabulary-mismatch queries — documents conceptually relevant but lacking exact query keywords will rise significantly in rank. Try the "fast document retrieval" demo query with re-rank toggled on and off to see a live BM25-vs-semantic side-by-side comparison in the frontend.
+The re-ranker needs ~30 seconds to load the ML model on first boot. The circuit breaker opens after 5 slow calls. Check:
 
-If the re-ranking service is unavailable, the **Resilience4j circuit breaker** opens immediately and returns BM25 order — the search endpoint never fails.
+```bash
+docker logs reranker --tail 20
+# Look for: "Application startup complete."
+curl http://localhost:8001/health
+```
 
----
+Once the reranker is healthy, the circuit breaker will transition back to CLOSED after the next successful call.
 
-## Demo queries
+### `docker compose up` fails with "port already in use"
 
-Run these in the **Search tab** of the frontend to see each system feature:
+Another process is using port 9200, 6379, 8080, or 3000. Find and stop it, or change the host port in `docker-compose.yml`.
 
-| Query | What it shows |
-|---|---|
-| `fast document retrieval` | Toggle Re-rank off/on — the keyword-stuffed doc drops from #1 |
-| `how does semantic search work` | BM25 misses conceptual matches; re-ranker surfaces them |
-| `cache latency performance` | Run twice — second response shows ⚡ Cached badge and near-0 ms |
-| `circuit breaker microservices` | Finds resilience docs via semantic similarity, not exact keywords |
-| `distributed search production` | Broad query — shows full corpus coverage and score bars |
+### Frontend shows stale results after adding documents
+
+Documents are cached in Redis. Clear the cache from the **Cache** tab in the frontend, or:
+
+```bash
+curl -X DELETE http://localhost:8080/api/v2/cache/all
+```
+
+### Kibana shows "Index not found"
+
+The `documents` index is only created when the first document is indexed. Run the sample data script first:
+
+```bash
+python scripts/load-sample-data.py
+```
 
 ---
 
@@ -270,15 +352,18 @@ Badge at the top of this file reflects the latest build status.
 | Core API | Spring Boot 3.2 · Java 21 |
 | Search engine | Elasticsearch 8.13 (2-node cluster) |
 | Re-ranking | FastAPI · Gunicorn · sentence-transformers |
-| ML model | `all-MiniLM-L6-v2` |
-| Cache | Redis 7.2 |
+| ML model | `all-MiniLM-L6-v2` (384-dim, MTEB top-10) |
+| Hybrid scoring | 5% BM25 + 95% cosine similarity |
+| Cache | Redis 7.2 (SCAN-safe eviction) |
 | Resilience | Resilience4j circuit breaker |
-| HTTP client | Spring WebClient |
+| HTTP client | Spring WebClient (non-blocking) |
 | File extraction | Apache PDFBox 3 · Apache POI |
 | API docs | Springdoc OpenAPI (Swagger UI) |
 | Metrics | Micrometer · Prometheus · Grafana |
+| Log analytics | Kibana 8.13 (structured JSON logs) |
 | Frontend | Vanilla JS SPA · nginx reverse proxy |
-| Containerisation | Docker · Docker Compose (8 services) |
+| Rate limiting | nginx `limit_req_zone` (30/min search, 120/min API) |
+| Containerisation | Docker · Docker Compose (9 services) |
 | CI | GitHub Actions |
 
 ---
@@ -287,7 +372,7 @@ Badge at the top of this file reflects the latest build status.
 
 ```
 distributed-search-v2/
-├── docker-compose.yml              # Full-stack orchestration (8 services)
+├── docker-compose.yml              # Full-stack orchestration (9 services)
 ├── .env.example                    # Environment variable template (copy → .env)
 ├── .github/
 │   └── workflows/build.yml         # CI — Java + Python parallel jobs
@@ -297,10 +382,10 @@ distributed-search-v2/
 │   └── provisioning/               # Auto-provisioned datasource + dashboard
 ├── frontend/
 │   ├── index.html                  # Dark SPA (search, stats, side-by-side, cache, documents)
-│   └── nginx.conf                  # Reverse proxy config
+│   └── nginx.conf                  # Reverse proxy + rate limiting
 ├── scripts/
 │   ├── load-sample-data.py         # 15 demo documents via bulk API
-│   └── fix-demo-doc.py             # Replaces BM25-weakness demo document
+│   └── fix-demo-doc.py             # Ensures BM25-weakness demo document is correct
 ├── search-api/                     # Spring Boot application
 │   ├── Dockerfile
 │   ├── pom.xml
@@ -319,7 +404,7 @@ distributed-search-v2/
     ├── tests/                      # pytest — 6 API tests with mocked model
     └── app/
         ├── main.py                 # FastAPI app + /health + /re-rank
-        ├── reranker.py             # Async hybrid scoring (20% BM25 + 80% cosine)
+        ├── reranker.py             # Async hybrid scoring (5% BM25 + 95% cosine)
         └── models.py               # Pydantic request/response models
 ```
 
