@@ -22,6 +22,7 @@ services:
       - "9200:9200"
     networks:
       - search-net
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
       interval: 15s
@@ -48,6 +49,7 @@ services:
       - es02_data:/usr/share/elasticsearch/data
     networks:
       - search-net
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
       interval: 15s
@@ -66,6 +68,7 @@ services:
       - "6379:6379"
     networks:
       - search-net
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -91,7 +94,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
-    restart: on-failure
+    restart: unless-stopped
 
   # ── Spring Boot Search API ────────────────────────────────────────────────────
   search-api:
@@ -111,7 +114,7 @@ services:
         condition: service_healthy
       reranker:
         condition: service_healthy
-    restart: on-failure
+    restart: unless-stopped
 
   # ── Frontend (nginx SPA + reverse proxy) ─────────────────────────────────────
   frontend:
@@ -126,11 +129,52 @@ services:
       - search-net
     depends_on:
       - search-api
+    restart: unless-stopped
+
+  # ── Prometheus (metrics scraping) ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - search-net
+    depends_on:
+      - search-api
+    restart: unless-stopped
+
+  # ── Grafana (metrics dashboards) ──────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - search-net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
 
 volumes:
   es01_data:
   es02_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   search-net:

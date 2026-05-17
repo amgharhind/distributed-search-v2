@@ -420,6 +420,79 @@ details[open] .adv-arrow { transform: rotate(90deg); }
 .upload-item-status.done      { color: var(--ok); }
 .upload-item-status.error     { color: var(--err); }
 
+/* ── Stats strip ─────────────────────────────────────────────────────────────── */
+.stats-strip {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 14px 0 18px; margin-bottom: 4px;
+  align-items: center; border-bottom: 1px solid var(--bd);
+}
+.stat-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 20px;
+  background: var(--bg2); border: 1px solid var(--bd);
+  font-size: .72rem; color: var(--t2); cursor: default;
+}
+.stat-val { font-weight: 700; color: var(--t1); font-family: 'JetBrains Mono', monospace; }
+.stat-chip.loading .stat-val { color: var(--t3); }
+
+/* ── Demo query pills ────────────────────────────────────────────────────────── */
+.demo-row { margin: 16px 0 20px; }
+.demo-label {
+  font-size: .65rem; font-weight: 600; color: var(--t3);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px;
+}
+.demo-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.demo-pill {
+  padding: 5px 14px; border-radius: 20px;
+  background: var(--bg2); border: 1px solid var(--bd-l);
+  color: var(--t2); font-size: .75rem; font-family: inherit;
+  cursor: pointer; transition: all .15s;
+}
+.demo-pill:hover {
+  background: var(--accent-l); border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Comparison layout ───────────────────────────────────────────────────────── */
+.comparison-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .comparison-wrap { grid-template-columns: 1fr; } }
+
+.comp-col { display: flex; flex-direction: column; gap: 6px; }
+.comp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: var(--bg2); border: 1px solid var(--bd);
+  border-radius: 8px; margin-bottom: 2px;
+  position: sticky; top: 56px; z-index: 10;
+}
+.comp-header-title { font-size: .78rem; font-weight: 700; }
+
+.mini-card {
+  background: var(--bg2); border: 1px solid var(--bd);
+  border-radius: 8px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; transition: border-color .15s, transform .1s;
+}
+.mini-card:hover { border-color: rgba(124,58,237,.4); transform: translateX(2px); }
+.mini-card.clicked { border-color: var(--ok) !important; }
+.mini-card-body { flex: 1; min-width: 0; }
+.mini-card-title {
+  font-size: .78rem; font-weight: 600; color: var(--t1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-bottom: 3px;
+}
+.mini-ft { padding: 1px 5px; font-size: .6rem; }
+
+.rank-delta {
+  flex-shrink: 0; font-size: .68rem; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.rank-delta.up   { background: rgba(52,211,153,.12); color: var(--emerald); }
+.rank-delta.down { background: rgba(248,81,73,.12); color: var(--err); }
+.rank-delta.same { background: transparent; color: var(--t3); font-size: .6rem; }
+
+.mini-score-bar { flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+
 /* ── Modal ───────────────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 500;
@@ -489,6 +562,27 @@ details[open] .adv-arrow { transform: rotate(90deg); }
 
   <!-- SEARCH VIEW -->
   <div class="view active" id="view-search">
+
+    <!-- Live system stats -->
+    <div class="stats-strip" id="stats-strip">
+      <div class="stat-chip loading" id="stat-docs"><span class="stat-val">📄 …</span></div>
+      <div class="stat-chip loading" id="stat-cache"><span class="stat-val">⚡ …</span></div>
+      <div class="stat-chip loading" id="stat-nodes"><span class="stat-val">🔗 …</span></div>
+      <div class="stat-chip"><span class="stat-val">🤖 all-MiniLM-L6-v2</span></div>
+      <div class="stat-chip"><span class="stat-val">⚖️ 5% BM25 + 95% Semantic</span></div>
+    </div>
+
+    <!-- Demo query one-click buttons -->
+    <div class="demo-row">
+      <div class="demo-label">Try a demo query</div>
+      <div class="demo-pills">
+        <button class="demo-pill" onclick="demoSearch('fast document retrieval')">fast document retrieval</button>
+        <button class="demo-pill" onclick="demoSearch('how does semantic search work')">how does semantic search work</button>
+        <button class="demo-pill" onclick="demoSearch('cache latency performance')">cache latency performance</button>
+        <button class="demo-pill" onclick="demoSearch('circuit breaker microservices')">circuit breaker microservices</button>
+        <button class="demo-pill" onclick="demoSearch('how to measure search ranking quality')">how to measure search ranking quality</button>
+      </div>
+    </div>
 
     <!-- Search type selector -->
     <div class="type-row" id="type-row">
@@ -867,8 +961,9 @@ async function runSearch(page = 0) {
 
     if (S.type === 'fulltext') {
       const q = val('q'); if (!q) { toast('Enter a search query', 'err'); return; }
+      const useRerank = chk('o-rerank');
       const params = {
-        query: q,
+        query:     q,
         field:     val('o-field') || 'content',
         fileType:  val('o-filetype') || undefined,
         sortField: val('o-sort')  || undefined,
@@ -876,11 +971,20 @@ async function runSearch(page = 0) {
         page,
         size:      val('o-size') || 10,
         cache:     chk('o-cache'),
-        rerank:    chk('o-rerank'),
       };
-      result = await API.search(params);
-      S.lastResult = result;
-      renderFullText(result);
+      if (useRerank) {
+        // Run BM25-only and re-ranked in parallel → side-by-side comparison
+        const [bm25Result, rrResult] = await Promise.all([
+          API.search({ ...params, rerank: false }),
+          API.search({ ...params, rerank: true }),
+        ]);
+        S.lastResult = rrResult;
+        renderComparison(bm25Result, rrResult);
+      } else {
+        result = await API.search({ ...params, rerank: false });
+        S.lastResult = result;
+        renderFullText(result);
+      }
 
     } else if (S.type === 'wildcard') {
       const pattern = val('q'); if (!pattern) { toast('Enter a wildcard pattern', 'err'); return; }
@@ -937,6 +1041,149 @@ function renderFullText(r) {
     `<div class="cards">${docs.map((d, i) => card(d, S.page * size + i + 1, maxBm25, reranked)).join('')}</div>`;
 
   renderPages(totalHits, size);
+}
+
+/* ── Render: side-by-side comparison (BM25 vs re-ranked) ───────────────────── */
+function renderComparison(bm25Result, rrResult) {
+  const { documents: bm25Docs, totalHits, fromCache: cachedB, latencyMs: latB } = bm25Result;
+  const { documents: rrDocs, fromCache: cachedR, latencyMs: latR } = rrResult;
+
+  const meta = document.getElementById('meta-bar');
+  meta.style.display = 'flex';
+  meta.innerHTML = `
+    <span class="meta-hits">${totalHits.toLocaleString()} <em>result${totalHits !== 1 ? 's' : ''}</em></span>
+    <span class="chip chip-reranked">✦ Re-ranked</span>
+    ${(cachedB || cachedR) ? '<span class="chip chip-cache">⚡ Cached</span>' : ''}
+    <span class="chip chip-latency">${Math.max(latB, latR)} ms</span>`;
+
+  if (!bm25Docs?.length) {
+    document.getElementById('results').innerHTML = emptyState('No documents matched', 'Try broader terms or remove filters.');
+    document.getElementById('pages').innerHTML = '';
+    return;
+  }
+
+  // Build rank-lookup maps
+  const bm25Rank = {}, rrRank = {};
+  bm25Docs.forEach((d, i) => { bm25Rank[d.id] = i + 1; });
+  rrDocs.forEach((d, i)   => { rrRank[d.id]   = i + 1; });
+  const maxBm25 = Math.max(...bm25Docs.map(d => d.bm25Score || 0), 1);
+
+  document.getElementById('results').innerHTML = `
+    <div class="comparison-wrap">
+      <div class="comp-col">
+        <div class="comp-header">
+          <span class="comp-header-title" style="color:var(--amber)">▤ BM25 Order</span>
+          <span style="font-size:.68rem;color:var(--t3)">${latB} ms</span>
+        </div>
+        ${bm25Docs.map((d, i) => miniCard(d, i + 1, rrRank[d.id], false, maxBm25)).join('')}
+      </div>
+      <div class="comp-col">
+        <div class="comp-header">
+          <span class="comp-header-title" style="color:var(--emerald)">✦ Semantic Re-ranked</span>
+          <span style="font-size:.68rem;color:var(--t3)">${latR} ms</span>
+        </div>
+        ${rrDocs.map((d, i) => miniCard(d, i + 1, bm25Rank[d.id], true, maxBm25)).join('')}
+      </div>
+    </div>`;
+
+  renderPages(totalHits, parseInt(val('o-size') || 10));
+}
+
+function miniCard(doc, rank, otherRank, isReranked, maxBm25) {
+  const title = h(doc.title || doc.filename || `Document ${doc.id}`);
+  const ft    = (doc.fileType || '').toLowerCase();
+  const clr   = FT_COLORS[ft] || '#6b7280';
+
+  // Positive delta = this doc ranks better here than in the other column
+  const delta = isReranked ? (otherRank - rank) : (rank - otherRank);
+  let deltaHtml = '';
+  if (otherRank !== undefined) {
+    if (delta > 0)      deltaHtml = `<span class="rank-delta up">↑${delta}</span>`;
+    else if (delta < 0) deltaHtml = `<span class="rank-delta down">↓${Math.abs(delta)}</span>`;
+    else                deltaHtml = `<span class="rank-delta same">→</span>`;
+  }
+
+  const score = isReranked ? (doc.finalScore || 0) : (doc.bm25Score || 0);
+  const pct   = isReranked
+    ? Math.min(100, score * 100).toFixed(0)
+    : Math.min(100, (score / maxBm25) * 100).toFixed(0);
+  const barCls = isReranked ? 'f-fin' : 'f-bm25';
+
+  return `
+    <div class="mini-card" id="mcard-${h(doc.id)}" onclick="interactMini('${h(doc.id)}')">
+      <div class="rank" style="font-size:.62rem">#${rank}</div>
+      <div class="mini-card-body">
+        <div class="mini-card-title">${title}</div>
+        ${ft ? `<span class="ft-badge mini-ft" style="background:${clr}22;color:${clr};border:1px solid ${clr}44">${ft}</span>` : ''}
+      </div>
+      ${deltaHtml}
+      <div class="mini-score-bar">
+        <div class="s-track" style="width:48px"><div class="s-fill ${barCls}" style="width:${pct}%"></div></div>
+        <span style="font-size:.6rem;color:var(--t3);font-family:'JetBrains Mono',monospace;min-width:38px;text-align:right">${score.toFixed(3)}</span>
+      </div>
+    </div>`;
+}
+
+async function interactMini(docId) {
+  try {
+    await API.interact(docId);
+    document.querySelectorAll(`#mcard-${h(docId)}`).forEach(el => {
+      el.classList.add('clicked');
+      setTimeout(() => el.classList.remove('clicked'), 700);
+    });
+  } catch (_) {}
+}
+
+/* ── Demo query one-click ────────────────────────────────────────────────────── */
+function demoSearch(q) {
+  // Ensure we're on fulltext type
+  document.querySelectorAll('.type-pill').forEach(p => p.classList.remove('active'));
+  const ftPill = document.querySelector('[data-type="fulltext"]');
+  if (ftPill) ftPill.classList.add('active');
+  S.type = 'fulltext';
+  renderForm();
+
+  // Inject the query text
+  const input = document.getElementById('q');
+  if (input) input.value = q;
+
+  // Ensure advanced panel is open with re-rank ON
+  const adv = document.getElementById('adv-panel');
+  if (adv) adv.style.display = '';
+  const rr = document.getElementById('o-rerank');
+  if (rr) rr.checked = true;
+
+  runSearch(0);
+}
+
+/* ── System stats strip ──────────────────────────────────────────────────────── */
+function setStatVal(id, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const v = el.querySelector('.stat-val');
+  if (v) v.textContent = text;
+  el.classList.remove('loading');
+}
+
+async function refreshStats() {
+  // Document count via ES _count API
+  api('/es/documents/_count')
+    .then(r => setStatVal('stat-docs', `📄 ${(r.count || 0).toLocaleString()} docs`))
+    .catch(() => setStatVal('stat-docs', '📄 —'));
+
+  // Cache key count
+  API.cacheKeys()
+    .then(keys => setStatVal('stat-cache', `⚡ ${keys.length} cached`))
+    .catch(() => setStatVal('stat-cache', '⚡ —'));
+
+  // ES cluster nodes + status
+  API.healthEs()
+    .then(r => {
+      const nodes = r.number_of_nodes || '?';
+      const st    = r.status || '?';
+      setStatVal('stat-nodes', `🔗 ${nodes} node${nodes !== 1 ? 's' : ''} · ${st}`);
+    })
+    .catch(() => setStatVal('stat-nodes', '🔗 —'));
 }
 
 /* ── Render: simple list (wildcard / phrase / proximity / range) ────────────── */
@@ -1490,7 +1737,9 @@ document.getElementById('type-row').addEventListener('click', e => {
 /* ── Init ─────────────────────────────────────────────────────────────────────── */
 renderForm();
 checkHealth();
+refreshStats();
 setInterval(checkHealth, 30_000);
+setInterval(refreshStats, 60_000);
 </script>
 </body>
 </html>

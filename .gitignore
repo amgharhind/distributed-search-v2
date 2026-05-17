@@ -24,7 +24,8 @@ dist/
 *.iws
 *.ipr
 
-# Environment
+# Environment (copy .env.example → .env and fill in values)
+.env
 .env.local
 .env.production
 
@@ -36,5 +37,4 @@ dist/
 Thumbs.db
 
 .metals/
-search-api/.bloop/
-scripts/
+.bloop/
