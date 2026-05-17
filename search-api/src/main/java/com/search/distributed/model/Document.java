@@ -24,6 +24,7 @@ public class Document {
     private float bm25Score;
     private float semanticScore;
     private double finalScore;
+    private String snippet;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -54,4 +55,7 @@ public class Document {
 
     public double getFinalScore() { return finalScore; }
     public void setFinalScore(double finalScore) { this.finalScore = finalScore; }
+
+    public String getSnippet() { return snippet; }
+    public void setSnippet(String snippet) { this.snippet = snippet; }
 }

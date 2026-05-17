@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -38,6 +39,11 @@ public class SearchService {
                     }
                     return b;
                 }));
+
+                s.highlight(hl -> hl
+                    .fields("content", hf -> hf.numberOfFragments(1).fragmentSize(160).noMatchSize(160))
+                    .fields("title",   hf -> hf.numberOfFragments(0))
+                );
 
                 if (sortField != null && !sortField.isBlank()) {
                     SortOrder order = "desc".equalsIgnoreCase(sortOrder) ? SortOrder.Desc : SortOrder.Asc;
@@ -120,6 +126,12 @@ public class SearchService {
                     if (doc == null) return null;
                     doc.setId(hit.id());
                     doc.setBm25Score(hit.score() != null ? hit.score().floatValue() : 0f);
+                    Map<String, List<String>> hl = hit.highlight();
+                    if (hl != null && !hl.isEmpty()) {
+                        List<String> frags = hl.get("content");
+                        if (frags == null || frags.isEmpty()) frags = hl.get("title");
+                        if (frags != null && !frags.isEmpty()) doc.setSnippet(frags.get(0));
+                    }
                     return doc;
                 })
                 .filter(Objects::nonNull)

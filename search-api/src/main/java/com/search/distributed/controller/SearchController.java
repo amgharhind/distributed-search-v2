@@ -2,6 +2,7 @@ package com.search.distributed.controller;
 
 import com.search.distributed.model.Document;
 import com.search.distributed.model.SearchResult;
+import com.search.distributed.service.AnalyticsService;
 import com.search.distributed.service.CacheService;
 import com.search.distributed.service.InteractionService;
 import com.search.distributed.service.RerankingService;
@@ -22,13 +23,16 @@ public class SearchController {
     private final RerankingService rerankingService;
     private final CacheService cacheService;
     private final InteractionService interactionService;
+    private final AnalyticsService analyticsService;
 
     public SearchController(SearchService searchService, RerankingService rerankingService,
-                            CacheService cacheService, InteractionService interactionService) {
+                            CacheService cacheService, InteractionService interactionService,
+                            AnalyticsService analyticsService) {
         this.searchService = searchService;
         this.rerankingService = rerankingService;
         this.cacheService = cacheService;
         this.interactionService = interactionService;
+        this.analyticsService = analyticsService;
     }
 
     @GetMapping
@@ -46,6 +50,7 @@ public class SearchController {
 
         if (query == null || query.isBlank()) throw new IllegalArgumentException("query must not be blank");
 
+        analyticsService.recordQuery(query);
         long start = System.currentTimeMillis();
         String cacheKey = CacheService.buildKey(query, field, fileType, sortField, page, size);
 
