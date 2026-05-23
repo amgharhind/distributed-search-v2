@@ -182,6 +182,9 @@ Run these in the **Search** tab of the frontend:
 | `distributed search production` | Broad query — shows full corpus coverage and score bars |
 
 ---
+<img width="1920" height="826" alt="image" src="https://github.com/user-attachments/assets/88233167-5779-4798-b804-f48cf476adbc" />
+<img width="1901" height="828" alt="image" src="https://github.com/user-attachments/assets/67682144-1858-42d0-9dec-50b4cb1ef963" />
+<img width="1263" height="773" alt="image" src="https://github.com/user-attachments/assets/a41216f4-8b61-4667-937a-f82cdb30b376" />
 
 ## Docker commands
 
