@@ -159,6 +159,55 @@ final_score = 0.05 × norm_bm25 + 0.95 × cosine_similarity
 
 If the re-ranking service is unavailable, the **Resilience4j circuit breaker** opens immediately and returns BM25 order — the search endpoint never fails.
 
+---
+
+## Circuit breaker — resilience pattern
+
+A circuit breaker is an electrical metaphor for protecting a system from cascading failures. When the FastAPI re-ranker is failing repeatedly, instead of every request waiting for a timeout and crashing, the circuit "opens" — requests stop reaching the broken service immediately and a fallback kicks in. In this project the fallback returns BM25 order without re-ranking, so search never fails even when the ML service is down.
+
+**Three states:**
+
+| State | Behaviour |
+|---|---|
+| **Closed** | Normal — requests flow through to the re-ranker |
+| **Open** | Circuit tripped — re-ranker is bypassed entirely, BM25 results return in ~5 ms |
+| **Half-open** | Recovery probe — one test request is allowed through to check if the re-ranker recovered |
+
+**How it works in this project** — `RerankingService.java`:
+
+```java
+@CircuitBreaker(name = "reranking", fallbackMethod = "fallback")
+public List<Document> rerank(String query, List<Document> documents) {
+    // calls http://reranker:8001/re-rank via WebClient
+    // times out after 15s if the ML service is overloaded
+}
+
+public List<Document> fallback(String query, List<Document> documents, Throwable ex) {
+    log.warn("Re-ranking unavailable ({}), returning BM25 order", ex.getMessage());
+    return documents;  // search never fails — just degrades gracefully
+}
+```
+
+**Configuration** — `application.yml`:
+
+```yaml
+resilience4j:
+  circuitbreaker:
+    instances:
+      reranking:
+        slidingWindowSize: 10               # evaluate last 10 calls
+        minimumNumberOfCalls: 5             # need at least 5 before tripping
+        failureRateThreshold: 60            # open if 60%+ calls fail
+        slowCallDurationThreshold: 12s      # calls over 12s count as failures
+        slowCallRateThreshold: 80           # open if 80%+ calls are slow
+        waitDurationInOpenState: 15s        # wait before trying half-open
+        permittedNumberOfCallsInHalfOpenState: 3
+```
+
+**The key insight:** this pattern separates *availability* from *capability*. The system remains 100% available (always returns results) even when the ML service is degraded. That is production thinking — a system that degrades gracefully under failure is more valuable than one that is faster but brittle.
+
+---
+
 ### Try it live — the BM25 weakness demo
 
 1. Open http://localhost:3000 → **Search** tab

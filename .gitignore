@@ -26,6 +26,7 @@ dist/
 
 # Environment (copy .env.example → .env and fill in values)
 .env
+.env.example
 .env.local
 .env.production
 
